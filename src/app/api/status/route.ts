@@ -269,11 +269,16 @@ async function getSystemStatus(workspaceId: number) {
         status.uptime = Date.now() - parseInt(match[1]) * 1000
       }
     } else {
-      const { stdout } = await runCommand('uptime', ['-s'], {
-        timeoutMs: 3000
-      })
-      const bootTime = new Date(stdout.trim())
-      status.uptime = Date.now() - bootTime.getTime()
+      try {
+        const { stdout } = await runCommand('uptime', ['-s'], {
+          timeoutMs: 3000
+        })
+        const bootTime = new Date(stdout.trim())
+        status.uptime = Date.now() - bootTime.getTime()
+      } catch {
+        // Fallback for containers without uptime command
+        status.uptime = os.uptime() * 1000
+      }
     }
   } catch (error) {
     logger.error({ err: error }, 'Error getting uptime')
@@ -403,6 +408,11 @@ async function getGatewayStatus() {
     gatewayStatus.port_listening = await isPortOpen(config.gatewayHost, config.gatewayPort)
   } catch (error) {
     logger.error({ err: error }, 'Error checking port')
+  }
+
+  // Fallback: if ps failed (e.g. Docker slim image) but port is reachable, treat as running
+  if (!gatewayStatus.running && gatewayStatus.port_listening) {
+    gatewayStatus.running = true
   }
 
   try {
