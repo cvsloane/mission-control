@@ -30,13 +30,7 @@ services:
           memory: 512M
           cpus: '1.0'
           pids: 256
-    networks:
-      - mc-net
     restart: unless-stopped
 
 volumes:
   mc-data:
-
-networks:
-  mc-net:
-    driver: bridge
