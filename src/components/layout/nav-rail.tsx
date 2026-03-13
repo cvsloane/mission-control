@@ -552,6 +552,7 @@ function MobileBottomBar({ activeTab, navigateToPanel, groups, items }: {
   groups: NavGroup[]
   items: NavItem[]
 }) {
+  const tn = useTranslations('nav')
   const [sheetOpen, setSheetOpen] = useState(false)
   const priorityItems = items.filter(i => i.priority)
   const nonPriorityIds = new Set(items.filter(i => !i.priority).map(i => i.id))
@@ -591,7 +592,7 @@ function MobileBottomBar({ activeTab, navigateToPanel, groups, items }: {
                 <circle cx="12" cy="8" r="1.5" />
               </svg>
             </div>
-            <span className="text-[10px] font-medium">More</span>
+            <span className="text-[10px] font-medium">{tn('more')}</span>
             {moreIsActive && (
               <span className="absolute top-1.5 right-2.5 w-1.5 h-1.5 rounded-full bg-primary" />
             )}
@@ -716,6 +717,7 @@ function OrgRow({ label, initial, active, colorClass, onClick, isActiveOrg, proj
   onSwitchProject: (project: import('@/store').Project | null) => void
   onNewProject: () => void
 }) {
+  const tcs = useTranslations('contextSwitcher')
   return (
     <div>
       <Button
@@ -748,7 +750,7 @@ function OrgRow({ label, initial, active, colorClass, onClick, isActiveOrg, proj
                 <circle cx="8" cy="8" r="2" />
               </svg>
             </div>
-            All
+            {tcs('all')}
           </Button>
           {projects.map((project) => (
             <Button
@@ -817,6 +819,9 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
   activeTab: string
 }) {
   const { setShowProjectManagerModal } = useMissionControl()
+  const tcs = useTranslations('contextSwitcher')
+  const tn = useTranslations('nav')
+  const tc = useTranslations('common')
   // Build unified org list: DB tenants + unlinked OS users
   const linkedUsernames = new Set(tenants.map(t => t.linux_user))
   const unlinkedOsUsers = osUsers.filter(u => !linkedUsernames.has(u.username) && !u.is_process_owner)
@@ -831,7 +836,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
   const tenantName = activeTenant?.display_name || defaultOrgName
   const projectName = activeProject?.name
   const contextLine = projectName ? `${tenantName} / ${projectName}` : tenantName
-  const connectionLabel = isLocal ? 'Local Mode' : isConnected ? 'Connected' : 'Disconnected'
+  const connectionLabel = isLocal ? tcs('localMode') : isConnected ? tcs('connected') : tcs('disconnected')
   const connectionDotClass = isLocal ? 'bg-void-cyan' : isConnected ? 'bg-green-500' : 'bg-red-500'
 
   return (
@@ -931,7 +936,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
             {/* Interface mode toggle */}
             <div className="mx-2 border-t border-border my-1" />
             <div className="px-3 py-1.5 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Interface</span>
+              <span className="text-xs text-muted-foreground">{tcs('interface')}</span>
               <div className="flex rounded-md border border-border overflow-hidden">
                 <button
                   onClick={async () => {
@@ -948,7 +953,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${interfaceMode === 'essential' ? 'bg-void-amber' : 'bg-muted-foreground/30'}`} />
-                  Essential
+                  {tcs('essential')}
                 </button>
                 <button
                   onClick={async () => {
@@ -963,7 +968,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${interfaceMode === 'full' ? 'bg-void-cyan' : 'bg-muted-foreground/30'}`} />
-                  Full
+                  {tcs('full')}
                 </button>
               </div>
             </div>
@@ -980,7 +985,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                   <circle cx="8" cy="8" r="3" />
                   <path d="M8 1v2M8 13v2M1 8h2M13 8h2M2.9 2.9l1.4 1.4M11.7 11.7l1.4 1.4M13.1 2.9l-1.4 1.4M4.3 11.7l-1.4 1.4" />
                 </svg>
-                Settings
+                {tn('settings')}
               </Button>
               <Button
                 variant="ghost"
@@ -990,7 +995,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60">
                   <path d="M14 8H11L9.5 13L6.5 3L5 8H2" />
                 </svg>
-                Activity
+                {tn('activity')}
               </Button>
             </div>
 
@@ -999,7 +1004,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
               <>
                 <div className="mx-2 border-t border-border my-1" />
                 <div className="px-3 pt-2 pb-1">
-                  <span className="text-[10px] tracking-wider text-muted-foreground/60 font-semibold">ORGANIZATIONS</span>
+                  <span className="text-[10px] tracking-wider text-muted-foreground/60 font-semibold">{tcs('organizations')}</span>
                 </div>
                 <div className="px-1">
                   {/* Default org */}
@@ -1041,8 +1046,8 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                       osUser.has_openclaw && 'openclaw',
                     ].filter(Boolean)
                     const statusLabel = isLocal
-                      ? (tools.length > 0 ? tools.join('+') : 'no tools')
-                      : 'unlinked'
+                      ? (tools.length > 0 ? tools.join('+') : tcs('noTools'))
+                      : tcs('unlinked')
                     return (
                       <Button
                         key={osUser.username}
@@ -1083,35 +1088,35 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                           <path d="M8 3v10M3 8h10" />
                         </svg>
                       </div>
-                      New organization...
+                      {tcs('newOrganization')}
                     </Button>
                   ) : (
                     <div className="px-1 pt-1 pb-1 space-y-1.5">
                       <input
                         value={createForm.username}
                         onChange={(e) => setCreateForm(f => ({ ...f, username: e.target.value }))}
-                        placeholder="Username (OS user)"
+                        placeholder={tcs('usernamePlaceholder')}
                         autoFocus
                         className="w-full h-7 px-2 rounded bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50"
                       />
                       <input
                         value={createForm.display_name}
                         onChange={(e) => setCreateForm(f => ({ ...f, display_name: e.target.value }))}
-                        placeholder="Display name"
+                        placeholder={tcs('displayNamePlaceholder')}
                         className="w-full h-7 px-2 rounded bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50"
                       />
                       {!isLocal && (
                         <input
                           value={createForm.gateway_port}
                           onChange={(e) => setCreateForm(f => ({ ...f, gateway_port: e.target.value }))}
-                          placeholder="Gateway port (required)"
+                          placeholder={tcs('gatewayPortPlaceholder')}
                           className="w-full h-7 px-2 rounded bg-secondary border border-border text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50"
                         />
                       )}
                       {/* Tool installation checkboxes */}
                       {isLocal && (
                         <div className="space-y-1 px-0.5">
-                          <div className="text-[10px] text-muted-foreground/60 font-semibold tracking-wider">INSTALL TOOLS</div>
+                          <div className="text-[10px] text-muted-foreground/60 font-semibold tracking-wider">{tcs('installTools')}</div>
                           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                             <label className="flex items-center gap-1 cursor-pointer">
                               <input
@@ -1157,9 +1162,9 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                           onClick={async () => {
                             const username = createForm.username.trim().toLowerCase()
                             const display_name = createForm.display_name.trim()
-                            if (!username || !display_name) { setCreateError('Username and display name required'); return }
-                            if (!/^[a-z][a-z0-9_-]{1,30}[a-z0-9]$/.test(username)) { setCreateError('Invalid username format'); return }
-                            if (!isLocal && !createForm.gateway_port) { setCreateError('Gateway port required'); return }
+                            if (!username || !display_name) { setCreateError(tcs('usernameAndDisplayRequired')); return }
+                            if (!/^[a-z][a-z0-9_-]{1,30}[a-z0-9]$/.test(username)) { setCreateError(tcs('invalidUsernameFormat')); return }
+                            if (!isLocal && !createForm.gateway_port) { setCreateError(tcs('gatewayPortRequired')); return }
                             setCreating(true)
                             setCreateError(null)
                             try {
@@ -1189,7 +1194,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                           }}
                           className="flex-1 text-[11px]"
                         >
-                          {creating ? 'Creating...' : isLocal ? 'Create User' : 'Create + Queue'}
+                          {creating ? tcs('creating') : isLocal ? tcs('createUser') : tcs('createAndQueue')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1197,7 +1202,7 @@ function ContextSwitcher({ currentUser, isAdmin, isLocal, isConnected, tenants, 
                           onClick={() => { setCreateMode(false); setCreateError(null) }}
                           className="text-[11px]"
                         >
-                          Cancel
+                          {tc('cancel')}
                         </Button>
                       </div>
                     </div>
