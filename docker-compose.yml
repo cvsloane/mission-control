@@ -9,8 +9,12 @@ services:
     env_file:
       - path: .env
         required: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - mc-data:/app/.data
+      - /root/.openclaw:/openclaw-state:ro
+      - /root/clawd:/openclaw-agents:ro
     read_only: true
     tmpfs:
       - /tmp
