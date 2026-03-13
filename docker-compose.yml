@@ -2,8 +2,7 @@ services:
   mission-control:
     build: .
     container_name: mission-control
-    ports:
-      - "${MC_PORT:-3000}:${PORT:-3000}"
+    # No host port mapping - Traefik routes via container network
     environment:
       - PORT=${PORT:-3000}
     env_file:
