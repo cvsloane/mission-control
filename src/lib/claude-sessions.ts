@@ -300,8 +300,8 @@ export async function syncClaudeSessions(force = false): Promise<{ ok: boolean; 
 
     let upserted = 0
     db.transaction(() => {
-      // Mark all sessions inactive before scanning
-      db.prepare('UPDATE claude_sessions SET is_active = 0').run()
+      // Mark local sessions inactive before scanning (remote sessions are managed by their bridge)
+      db.prepare("UPDATE claude_sessions SET is_active = 0 WHERE source_host = 'local'").run()
 
       for (const s of sessions) {
         upsert.run(

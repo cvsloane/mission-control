@@ -1262,6 +1262,16 @@ const migrations: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_gateway_health_logs_gateway_id ON gateway_health_logs(gateway_id)`)
       db.exec(`CREATE INDEX IF NOT EXISTS idx_gateway_health_logs_probed_at ON gateway_health_logs(probed_at)`)
     }
+  },
+  {
+    id: '042_claude_sessions_source_host',
+    up(db: Database.Database) {
+      const columns = db.prepare(`PRAGMA table_info(claude_sessions)`).all() as Array<{ name: string }>
+      if (!columns.some(c => c.name === 'source_host')) {
+        db.exec(`ALTER TABLE claude_sessions ADD COLUMN source_host TEXT NOT NULL DEFAULT 'local'`)
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_claude_sessions_source_host ON claude_sessions(source_host)`)
+      }
+    }
   }
 ]
 
