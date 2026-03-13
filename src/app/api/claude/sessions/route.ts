@@ -86,6 +86,86 @@ export async function GET(request: NextRequest) {
 }
 
 /**
+ * PUT /api/claude/sessions — Ingest sessions from a remote Claude Code host
+ *
+ * Body: { source_host: string, sessions: SessionPayload[] }
+ * Auth: API key with operator role
+ */
+export async function PUT(request: NextRequest) {
+  const auth = requireRole(request, 'operator')
+  if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  try {
+    const body = await request.json()
+    const { source_host, sessions } = body
+
+    if (!source_host || typeof source_host !== 'string') {
+      return NextResponse.json({ error: 'source_host is required' }, { status: 400 })
+    }
+    if (!Array.isArray(sessions)) {
+      return NextResponse.json({ error: 'sessions must be an array' }, { status: 400 })
+    }
+
+    const db = getDatabase()
+    const now = Math.floor(Date.now() / 1000)
+
+    const upsert = db.prepare(`
+      INSERT INTO claude_sessions (
+        session_id, project_slug, project_path, model, git_branch,
+        user_messages, assistant_messages, tool_uses,
+        input_tokens, output_tokens, estimated_cost,
+        first_message_at, last_message_at, last_user_prompt,
+        is_active, source_host, scanned_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        model = excluded.model,
+        git_branch = excluded.git_branch,
+        user_messages = excluded.user_messages,
+        assistant_messages = excluded.assistant_messages,
+        tool_uses = excluded.tool_uses,
+        input_tokens = excluded.input_tokens,
+        output_tokens = excluded.output_tokens,
+        estimated_cost = excluded.estimated_cost,
+        last_message_at = excluded.last_message_at,
+        last_user_prompt = excluded.last_user_prompt,
+        is_active = excluded.is_active,
+        source_host = excluded.source_host,
+        scanned_at = excluded.scanned_at,
+        updated_at = excluded.updated_at
+    `)
+
+    let upserted = 0
+    db.transaction(() => {
+      // Mark this host's sessions inactive, then update with fresh data
+      db.prepare('UPDATE claude_sessions SET is_active = 0 WHERE source_host = ?').run(source_host)
+
+      for (const s of sessions) {
+        if (!s.sessionId) continue
+        upsert.run(
+          s.sessionId, s.projectSlug || 'unknown', s.projectPath || null,
+          s.model || null, s.gitBranch || null,
+          s.userMessages || 0, s.assistantMessages || 0, s.toolUses || 0,
+          s.inputTokens || 0, s.outputTokens || 0, s.estimatedCost || 0,
+          s.firstMessageAt || null, s.lastMessageAt || null,
+          s.lastUserPrompt || null,
+          s.isActive ? 1 : 0, source_host, now, now,
+        )
+        upserted++
+      }
+    })()
+
+    const active = sessions.filter((s: any) => s.isActive).length
+    return NextResponse.json({
+      ok: true,
+      message: `Ingested ${upserted} session(s) from ${source_host}, ${active} active`,
+    })
+  } catch (error) {
+    logger.error({ err: error }, 'PUT /api/claude/sessions error')
+    return NextResponse.json({ error: 'Failed to ingest remote sessions' }, { status: 500 })
+  }
+}
+
+/**
  * POST /api/claude/sessions — Trigger a manual scan of local Claude sessions
  */
 export async function POST(request: NextRequest) {
