@@ -744,3 +744,7 @@ If you find this project useful, consider supporting my open-source work.
 ## License
 
 [MIT](LICENSE) © 2026 [Builderz Labs](https://github.com/builderz-labs/mission-control)
+
+## Development Status
+
+See [project_status.md](./project_status.md) for recent development activity and context.
