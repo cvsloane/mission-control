@@ -110,10 +110,13 @@ function getSecurityInfo() {
   })
 
   const gwHost = config.gatewayHost
+  const dockerBridgeGateway = existsSync('/.dockerenv') && String(gwHost).trim().toLowerCase() === 'host.docker.internal'
   checks.push({
     name: 'Gateway bound to localhost',
-    pass: gwHost === '127.0.0.1' || gwHost === 'localhost',
-    detail: `Gateway host is '${gwHost}'`,
+    pass: gwHost === '127.0.0.1' || gwHost === 'localhost' || dockerBridgeGateway,
+    detail: dockerBridgeGateway
+      ? `Gateway host uses '${gwHost}' from inside Docker; verify OpenClaw bind mode and host firewall separately`
+      : `Gateway host is '${gwHost}'`,
   })
 
   const passing = checks.filter(c => c.pass).length

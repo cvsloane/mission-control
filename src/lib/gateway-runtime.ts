@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import { config } from '@/lib/config'
 import { logger } from '@/lib/logger'
+import { readOpenClawConfigFile, tryReadOpenClawConfigFile } from '@/lib/openclaw-config'
 
 interface OpenClawGatewayConfig {
   gateway?: {
@@ -18,13 +19,7 @@ interface OpenClawGatewayConfig {
 
 function readOpenClawConfig(): OpenClawGatewayConfig | null {
   const configPath = config.openclawConfigPath
-  if (!configPath || !fs.existsSync(configPath)) return null
-  try {
-    const raw = fs.readFileSync(configPath, 'utf8')
-    return JSON.parse(raw) as OpenClawGatewayConfig
-  } catch {
-    return null
-  }
+  return tryReadOpenClawConfigFile<OpenClawGatewayConfig>(configPath)
 }
 
 export function registerMcAsDashboard(mcUrl: string): { registered: boolean; alreadySet: boolean } {
@@ -34,8 +29,7 @@ export function registerMcAsDashboard(mcUrl: string): { registered: boolean; alr
   }
 
   try {
-    const raw = fs.readFileSync(configPath, 'utf8')
-    const parsed = JSON.parse(raw) as Record<string, any>
+    const parsed = readOpenClawConfigFile<Record<string, any>>(configPath)
 
     // Ensure nested structure
     if (!parsed.gateway) parsed.gateway = {}

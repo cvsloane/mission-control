@@ -7,6 +7,7 @@ import { requireRole } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { getDatabase } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { readOpenClawConfigFile } from '@/lib/openclaw-config'
 import { FIX_SAFETY, runSecurityScan, type FixSafety } from '@/lib/security-scan'
 
 export interface FixResult {
@@ -206,7 +207,7 @@ export async function POST(request: NextRequest) {
   if (ocFixIds.some(id => shouldFix(id)) && configPath && existsSync(configPath)) {
     let ocConfig: any
     try {
-      ocConfig = JSON.parse(readFileSync(configPath, 'utf-8'))
+      ocConfig = readOpenClawConfigFile(configPath)
     } catch { ocConfig = null }
 
     if (ocConfig) {

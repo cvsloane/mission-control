@@ -99,6 +99,21 @@ This enables:
 - **Log rotation** — prevents disk filling from verbose logging
 - **HSTS, secure cookies** — forced via environment
 
+### 5a. Containerized Security Scan Behavior
+
+When Mission Control runs inside Docker, the security scan can verify container-level controls directly, but it cannot reliably inspect host-only controls like:
+
+- firewall state (`ufw`, `iptables`, `nftables`)
+- NTP synchronization
+- automatic host OS updates
+- host disk encryption
+- host MAC frameworks (`AppArmor`, `SELinux`)
+- host-side `fail2ban`
+
+Those checks still appear as manual review items, but they are excluded from the posture score for containerized deployments so the score reflects what the container can actually verify.
+
+If `OPENCLAW_GATEWAY_HOST=host.docker.internal`, the scan treats that as a Docker host-bridge path instead of a public endpoint. You still need to verify the OpenClaw bind mode and host firewall rules separately.
+
 ### 6. Security Headers
 
 Mission Control sets these headers automatically:
@@ -180,6 +195,8 @@ MC_RETAIN_GATEWAY_SESSIONS_DAYS=90 # Gateway session history
 ## OpenClaw Gateway Hardening
 
 Mission Control acts as the mothership for your OpenClaw fleet. The installer automatically checks and repairs common OpenClaw configuration issues.
+
+`openclaw.json` is parsed with relaxed JSON handling, so comments and trailing commas are accepted anywhere Mission Control reads or updates the file.
 
 ### 1. Network Security
 

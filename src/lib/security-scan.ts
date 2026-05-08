@@ -4,6 +4,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { config } from '@/lib/config'
 import { getDatabase } from '@/lib/db'
+import { readOpenClawConfigFile } from '@/lib/openclaw-config'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,6 +22,7 @@ export interface Check {
   severity?: CheckSeverity
   fixSafety?: FixSafety
   platform?: 'linux' | 'darwin' | 'win32' | 'all'
+  affectsScore?: boolean
 }
 
 export interface Category {
@@ -75,6 +77,35 @@ const INSECURE_PASSWORDS = new Set([
   'admin', 'password', 'change-me-on-first-login', 'changeme', 'testpass123',
 ])
 
+function contributesToScore(check: Check): boolean {
+  return check.affectsScore !== false
+}
+
+function isDockerRuntime(): boolean {
+  return existsSync('/.dockerenv')
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase()
+  return normalized === '127.0.0.1' || normalized === 'localhost' || normalized === '::1'
+}
+
+function isDockerHostGatewayAlias(host: string): boolean {
+  return host.trim().toLowerCase() === 'host.docker.internal'
+}
+
+function markAsContainerHostReview(check: Check, detail: string, fix = 'Verify this hardening item on the Docker host instead of inside the container.'): Check {
+  if (!isDockerRuntime()) return check
+  return {
+    ...check,
+    status: 'warn',
+    detail,
+    fix,
+    fixSafety: 'manual-only',
+    affectsScore: false,
+  }
+}
+
 export function runSecurityScan(): ScanResult {
   const credentials = scanCredentials()
   const network = scanNetwork()
@@ -85,8 +116,9 @@ export function runSecurityScan(): ScanResult {
   const categories = { credentials, network, openclaw, runtime, os: osLevel }
   const allChecks = Object.values(categories).flatMap(c => c.checks)
 
-  const weightedMax = allChecks.reduce((s, c) => s + SEVERITY_WEIGHT[c.severity ?? 'medium'], 0)
-  const weightedScore = allChecks
+  const scoredChecks = allChecks.filter(contributesToScore)
+  const weightedMax = scoredChecks.reduce((s, c) => s + SEVERITY_WEIGHT[c.severity ?? 'medium'], 0)
+  const weightedScore = scoredChecks
     .filter(c => c.status === 'pass')
     .reduce((s, c) => s + SEVERITY_WEIGHT[c.severity ?? 'medium'], 0)
   const score = weightedMax > 0 ? Math.round((weightedScore / weightedMax) * 100) : 0
@@ -110,8 +142,9 @@ export function readSystemUptimeSeconds(): number | null {
 }
 
 function scoreCategory(checks: Check[]): Category {
-  const weightedMax = checks.reduce((s, c) => s + SEVERITY_WEIGHT[c.severity ?? 'medium'], 0)
-  const weightedScore = checks
+  const scoredChecks = checks.filter(contributesToScore)
+  const weightedMax = scoredChecks.reduce((s, c) => s + SEVERITY_WEIGHT[c.severity ?? 'medium'], 0)
+  const weightedScore = scoredChecks
     .filter(c => c.status === 'pass')
     .reduce((s, c) => s + SEVERITY_WEIGHT[c.severity ?? 'medium'], 0)
   return { score: weightedMax > 0 ? Math.round((weightedScore / weightedMax) * 100) : 100, checks }
@@ -211,6 +244,7 @@ function scanCredentials(): Category {
 
 function scanNetwork(): Category {
   const checks: Check[] = []
+  const dockerRuntime = isDockerRuntime()
 
   const allowedHosts = (process.env.MC_ALLOWED_HOSTS || '').trim()
   const allowAny = process.env.MC_ALLOW_ANY_HOST
@@ -243,14 +277,25 @@ function scanNetwork(): Category {
     severity: 'medium',
   })
 
-  const gwHost = config.gatewayHost
+  const gwHost = String(config.gatewayHost || '')
+  const gatewayUsesDockerBridge = dockerRuntime && isDockerHostGatewayAlias(gwHost)
   checks.push({
     id: 'gateway_local',
     name: 'Gateway bound to localhost',
-    status: gwHost === '127.0.0.1' || gwHost === 'localhost' ? 'pass' : 'fail',
-    detail: `Gateway host is ${gwHost}`,
-    fix: gwHost !== '127.0.0.1' && gwHost !== 'localhost' ? 'Set OPENCLAW_GATEWAY_HOST=127.0.0.1 — never expose the gateway publicly' : '',
+    status: isLoopbackHost(gwHost) ? 'pass' : gatewayUsesDockerBridge ? 'warn' : 'fail',
+    detail: isLoopbackHost(gwHost)
+      ? `Gateway host is ${gwHost}`
+      : gatewayUsesDockerBridge
+        ? 'Gateway host uses host.docker.internal from inside Docker. Verify the OpenClaw bind mode and host firewall on the Docker host.'
+        : `Gateway host is ${gwHost}`,
+    fix: isLoopbackHost(gwHost)
+      ? ''
+      : gatewayUsesDockerBridge
+        ? 'Prefer a same-namespace/sidecar gateway if you need loopback-only exposure. Otherwise verify host firewall rules and OpenClaw bind restrictions.'
+        : 'Set OPENCLAW_GATEWAY_HOST=127.0.0.1 — never expose the gateway publicly',
     severity: 'critical',
+    fixSafety: gatewayUsesDockerBridge ? 'manual-only' : undefined,
+    affectsScore: !gatewayUsesDockerBridge,
   })
 
   return scoreCategory(checks)
@@ -278,7 +323,7 @@ function scanOpenClaw(): Category {
 
   let ocConfig: any
   try {
-    ocConfig = JSON.parse(readFileSync(configPath, 'utf-8'))
+    ocConfig = readOpenClawConfigFile(configPath)
   } catch (err) {
     checks.push({
       id: 'config_valid',
@@ -290,6 +335,15 @@ function scanOpenClaw(): Category {
     })
     return scoreCategory(checks)
   }
+
+  checks.push({
+    id: 'config_valid',
+    name: 'OpenClaw config valid',
+    status: 'pass',
+    detail: 'openclaw.json parsed successfully',
+    fix: '',
+    severity: 'high',
+  })
 
   try {
     const stat = statSync(configPath)
@@ -653,7 +707,7 @@ function scanOS(): Category {
   if (isLinux) {
     const ntpStatus = cachedExec('ntp_sync', 'timedatectl status 2>/dev/null | grep -i "synchronized\\|ntp" | head -2')
     const ntpActive = ntpStatus?.toLowerCase().includes('yes') || ntpStatus?.toLowerCase().includes('active')
-    checks.push({
+    checks.push(markAsContainerHostReview({
       id: 'ntp_sync',
       name: 'Time synchronization',
       status: ntpActive ? 'pass' : 'warn',
@@ -661,7 +715,7 @@ function scanOS(): Category {
       fix: !ntpActive ? 'Enable NTP: sudo timedatectl set-ntp true' : '',
       severity: 'low',
       platform: 'linux',
-    })
+    }, 'Running in Docker: NTP synchronization must be verified on the host OS, not from inside the container.'))
   } else if (isDarwin) {
     const ntpStatus = cachedExec('ntp_sync', 'systemsetup -getusingnetworktime 2>/dev/null')
     const ntpActive = ntpStatus?.toLowerCase().includes('on')
@@ -685,7 +739,7 @@ function scanOS(): Category {
     const hasUfw = ufwStatus?.includes('active')
     const hasIptables = iptablesCount ? parseInt(iptablesCount, 10) > 8 : false
     const hasNft = nftCount ? parseInt(nftCount, 10) > 0 : false
-    checks.push({
+    checks.push(markAsContainerHostReview({
       id: 'firewall',
       name: 'Firewall active',
       status: hasUfw || hasIptables || hasNft ? 'pass' : 'warn',
@@ -693,7 +747,7 @@ function scanOS(): Category {
       fix: !hasUfw && !hasIptables && !hasNft ? 'Enable a firewall: sudo ufw enable' : '',
       severity: 'critical',
       platform: 'linux',
-    })
+    }, 'Running in Docker: firewall state must be verified on the host OS or orchestrator, not from inside the container.'))
   } else if (isDarwin) {
     const pfStatus = tryExec('/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null')
     const fwEnabled = pfStatus?.includes('enabled')
@@ -765,7 +819,7 @@ function scanOS(): Category {
     const hasUnattended = existsSync('/etc/apt/apt.conf.d/20auto-upgrades')
       || existsSync('/etc/yum/yum-cron.conf')
       || existsSync('/etc/dnf/automatic.conf')
-    checks.push({
+    checks.push(markAsContainerHostReview({
       id: 'auto_updates',
       name: 'Automatic security updates',
       status: hasUnattended ? 'pass' : 'warn',
@@ -773,7 +827,7 @@ function scanOS(): Category {
       fix: !hasUnattended ? 'Install unattended-upgrades (Debian/Ubuntu) or dnf-automatic (RHEL/Fedora)' : '',
       severity: 'medium',
       platform: 'linux',
-    })
+    }, 'Running in Docker: automatic package updates are a host-image concern and must be verified on the host or base image pipeline.'))
   } else if (isDarwin) {
     const autoUpdate = tryExec('defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled 2>/dev/null')
     checks.push({
@@ -804,7 +858,7 @@ function scanOS(): Category {
   } else if (isLinux) {
     const luksDevices = tryExec('lsblk -o TYPE 2>/dev/null | grep -c crypt')
     const hasCrypt = luksDevices ? parseInt(luksDevices, 10) > 0 : false
-    checks.push({
+    checks.push(markAsContainerHostReview({
       id: 'disk_encryption',
       name: 'Disk encryption (LUKS)',
       status: hasCrypt ? 'pass' : 'warn',
@@ -812,7 +866,7 @@ function scanOS(): Category {
       fix: !hasCrypt ? 'Consider encrypting data volumes with LUKS' : '',
       severity: 'high',
       platform: 'linux',
-    })
+    }, 'Running in Docker: disk encryption must be verified on the host volumes, not from inside the container.'))
   }
 
   // -- World-writable files --
@@ -885,7 +939,7 @@ function scanOS(): Category {
     const apparmor = cachedExec('apparmor', 'aa-status --enabled 2>/dev/null; echo $?')
     const hasSELinux = selinux === '1'
     const hasAppArmor = apparmor?.trim().endsWith('0')
-    checks.push({
+    checks.push(markAsContainerHostReview({
       id: 'linux_mac_framework',
       name: 'Mandatory access control',
       status: hasSELinux || hasAppArmor ? 'pass' : 'warn',
@@ -894,11 +948,11 @@ function scanOS(): Category {
       severity: 'high',
       fixSafety: 'manual-only',
       platform: 'linux',
-    })
+    }, 'Running in Docker: AppArmor/SELinux enforcement must be verified on the host or container runtime profile.'))
 
     // fail2ban
     const f2bStatus = cachedExec('fail2ban', 'systemctl is-active fail2ban 2>/dev/null')
-    checks.push({
+    checks.push(markAsContainerHostReview({
       id: 'linux_fail2ban',
       name: 'Brute-force protection (fail2ban)',
       status: f2bStatus === 'active' ? 'pass' : 'warn',
@@ -907,7 +961,7 @@ function scanOS(): Category {
       severity: 'medium',
       fixSafety: 'manual-only',
       platform: 'linux',
-    })
+    }, 'Running in Docker: fail2ban must be verified on the host, load balancer, or edge service protecting the container.'))
 
     // /tmp noexec
     const tmpMount = cachedExec('tmp_mount', 'mount 2>/dev/null | grep " /tmp "')

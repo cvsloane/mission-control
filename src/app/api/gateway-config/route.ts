@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { requireRole } from '@/lib/auth'
 import { logAuditEvent } from '@/lib/db'
 import { config } from '@/lib/config'
+import { parseJsonRelaxed } from '@/lib/json-relaxed'
 import { validateBody, gatewayConfigUpdateSchema } from '@/lib/validation'
 import { mutationLimiter } from '@/lib/rate-limit'
 import { getDetectedGatewayToken } from '@/lib/gateway-runtime'
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
   try {
     const { readFile } = require('fs/promises')
     const raw = await readFile(configPath, 'utf-8')
-    const parsed = JSON.parse(raw)
+    const parsed = parseJsonRelaxed<Record<string, any>>(raw)
     const hash = computeHash(raw)
 
     // Redact sensitive fields for display
@@ -151,7 +152,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const parsed = JSON.parse(raw)
+    const parsed = parseJsonRelaxed<Record<string, any>>(raw)
 
     for (const dotPath of Object.keys(body.updates)) {
       const [rootKey] = dotPath.split('.')
